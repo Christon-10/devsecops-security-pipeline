@@ -1,13 +1,13 @@
-FROM python:3.12.14-slim-trixie
+FROM python:3.12.14-alpine3.24
 
 WORKDIR /app
 
 COPY requirements.txt .
 
-RUN apt-get update \
-    && apt-get upgrade -y \
+RUN apk update \
+    && apk upgrade \
     && pip install --no-cache-dir -r requirements.txt \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/cache/apk/*
 
 COPY app.py .
 

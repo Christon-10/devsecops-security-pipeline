@@ -1,0 +1,88 @@
+name: Deployment
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  deploy:
+    name: Deploy Application
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Check Security Gate
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          echo "================================"
+          echo "       SECURITY GATE CHECK"
+          echo "================================"
+
+          gate=$(gh run list \
+            --repo "${{ github.repository }}" \
+            --workflow "Security Gate" \
+            --branch main \
+            --limit 1 \
+            --json conclusion,headSha \
+            --jq '.[0] | "\(.conclusion) \(.headSha)"')
+
+          conclusion=$(echo "$gate" | awk '{print $1}')
+          head_sha=$(echo "$gate" | awk '{print $2}')
+
+          echo "Security Gate Result: $conclusion"
+          echo "Security Gate Commit: $head_sha"
+          echo "Deployment Commit: ${{ github.sha }}"
+          echo ""
+
+          if [ "$conclusion" != "success" ]; then
+            echo "SECURITY GATE: FAILED"
+            echo "Deployment blocked."
+            exit 1
+          fi
+
+          if [ "$head_sha" != "${{ github.sha }}" ]; then
+            echo "SECURITY GATE: WRONG COMMIT"
+            echo "The Security Gate did not pass for this deployment commit."
+            echo "Deployment blocked."
+            exit 1
+          fi
+
+          echo "SECURITY GATE: PASSED"
+          echo "Correct commit verified."
+          echo "Deployment may proceed."
+
+      - name: Build Docker image
+        run: |
+          docker build -t devsecops-demo:latest .
+
+      - name: Deploy Docker container
+        run: |
+          docker run -d \
+            -p 5000:5000 \
+            --name devsecops-deployment \
+            devsecops-demo:latest
+
+      - name: Verify deployment
+        run: |
+          echo "Waiting for application to start..."
+          sleep 5
+
+          echo "Checking application..."
+          curl --fail http://localhost:5000/health
+
+          echo ""
+          echo "================================"
+          echo "      DEPLOYMENT SUCCESSFUL"
+          echo "================================"
+
+      - name: Stop deployed container
+        if: always()
+        run: |
+          docker stop devsecops-deployment || true
+          docker rm devsecops-deployment || true

@@ -1,5 +1,5 @@
 from flask import Flask
-
+API_KEY = "TEST_SECRET_123456789"
 app = Flask(__name__)
 
 
